@@ -1,0 +1,52 @@
+---
+title: "runQC"
+author: "Ramón Gallego"
+date: "5/31/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+RunQC generates a quality control report of your metabarcoding sequencing data, as an Illumina Run. At present, it uses banzai (https://github.com/jimmyodonnell/banzai) as a way of obtaining the information about your sequencing run. In particular, it uses a forked version of banzai (https://github.com/ramongallego/banzai) in which a first step is to reorient all reads so the Fwd primer sit at the beggining of the amplicon. This comes in handy if you are interested on spotting contamination or degeneration on the Tags used for sample identification. 
+RunQC is useful when you have pooled samples in a library by using one or two PCRs to add sample identifiers to the sequences. In our lab, we use redundant Tags to do so, and RunQC takes advantage of tat fact to look for possible crosscontaminations in your reads.
+
+So, let's start with the QC control of your metabarcoding run
+
+Your run aimed to sequence (total number of samples). You used (number of libraries) level one indices combined with (number of Tags) level two indices to identify those samples. We will analyize each level-one index and all the level two indices included in it.
+A first plot shows the recovery of the forward and reverse Tags: Banzai only analyzes those reads in which F and R Tags belonged to the same tag, while here we are looking behind the scenes. Forward Tags are in the Y axis and Reverse Tags in the X axis, and tags have been ordered so the expected combinations lie in the diagonal of the plot. Axis labels have been color-coded, with green representing Tags expected and recovered; pink for expected but not recovered (not necessarily a problem: it could be your negative control) and red for unexpected Tags.
+
+Another way of looking at this is by showing - for each Tag - how many reads had the correct tag at the other end of the amplicon.
+
+Looking at all libraries at once, we have generated two .csv files with all missing (head missing ll) and all unexpected barcodes (head allunexpected). With the missing samples, you can see the patterns across libraries on this table
+(insert table)
+
+What aboutthe unexpected barcode combinations? We can visualize the patterns across libraries, showing the number of unexpected Reverse Tags per Forward Tag, and viceversa. If there was a consistent problem with the oligos used for secondary indexing, You can discover looking for patterns across this graphs. It something went wrong during the preparation of a particular libary those patterns will arise along the columns in this graph.
+
+The underlying issue could be a Tag-jumping event, possibly during library amplification, in which unused secondary tags have been carried over and start binding with properly tagged amplicons, and then producing a number of randonmly tagged amplicons. We can have two looks at this problem. One is by having, on each library, an known amplicon that would not occurr on the rest of the samples. Then we can plot its abundance across different tag combinations.
+
+You labelled your positive control as Ostrich*(1,2,3)
+
+
+
+Your sequencing run returned (total number of reads). (perdentage of paired) % of Forward and Reverse reads could be correctly merged using PEAR  consisted on (introduce number of samples)
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
