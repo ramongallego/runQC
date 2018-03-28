@@ -1,6 +1,6 @@
 #-------------------------------------------------------------------------------
 
-setwd("/Users/jimmy.odonnell/Projects/Aquaculture_Diversity/banzai_out_20161206_1607")
+setwd("/Users/rgallego/banzai_out_20170608_1414")
 
 # specify otu mapfile
 otu_mapfile <- "all_lib/derep.map"
@@ -40,7 +40,7 @@ rename_samples <- function(map_otu, map_sample){
 	map_otu[,2] <- map_sample[,3][match(map_otu[,2], map_sample[,1])]
 	return(map_otu)
 }
-otu_map_final <- rename_samples(otu_map_gt10, sample_map)
+otu_map_final <- rename_samples(otu_map_no_singletons, sample_map)
 class(otu_map_final)
 head(otu_map_final)
 

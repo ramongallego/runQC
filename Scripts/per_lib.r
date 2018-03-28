@@ -38,5 +38,6 @@ per_lib<-function(lib, otu, map){
   }else{
     a<-NULL  
   }
-  return(list(plot=p,missing=a,unexpectedF=Fwd_list[["Unexpected_barcodes"]], unexpectedR=Rev_list[["Unexpected_barcodes"]]))
+  return(list(plot=p,missing=a,unexpectedF=Fwd_list[["Unexpected_barcodes"]], unexpectedR=Rev_list[["Unexpected_barcodes"]],
+              data_to_plot_abundance=Fwd_list[["data_to_plot_abundance"]],data_to_plot_uniques=Fwd_list[["data_to_plot_uniques"]]))
 }

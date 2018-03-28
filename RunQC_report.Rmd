@@ -7,46 +7,195 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(gridExtra)
+library(stringr)
+library (ggplot2)
+library (reshape2)
+library(Biostrings)
+library(dplyr)
+library(vegan)
+source('./Scripts/remap_banzai_output.r')
+source('./Scripts/string.diff.ex.r')
+source('./Scripts/per_lib_with_only_green.r')
+source('./Scripts/fv.r')
+source('./Scripts/distance_to_known.r')
+source('./Scripts/Mon_rev_com.r')
+source('./Scripts/multiplot.r')
+ntags<-function(lib){nlevels(as.factor(subset(x = sample_map,subset = library==lib)[,"Fwd"]))}
 ```
 
 ## R Markdown
 
-RunQC generates a quality control report of your metabarcoding sequencing data, as an Illumina Run. At present, it uses banzai (https://github.com/jimmyodonnell/banzai) as a way of obtaining the information about your sequencing run. In particular, it uses a forked version of banzai (https://github.com/ramongallego/banzai) in which a first step is to reorient all reads so the Fwd primer sit at the beggining of the amplicon. This comes in handy if you are interested on spotting contamination or degeneration on the Tags used for sample identification. 
-RunQC is useful when you have pooled samples in a library by using one or two PCRs to add sample identifiers to the sequences. In our lab, we use redundant Tags to do so, and RunQC takes advantage of tat fact to look for possible crosscontaminations in your reads.
+RunQC generates a quality control report of your metabarcoding sequencing data, as an Illumina Run. At present, it uses banzai (https://github.com/jimmyodonnell/banzai) as a way of obtaining the information about your sequencing run. In particular, it uses a forked version of banzai (https://github.com/ramongallego/banzai) in which a first step is to reorient all reads so the Fwd primer sits at the beggining of the amplicon. This comes in handy if you are interested on spotting contamination or degeneration on the Tags used for sample identification. 
+RunQC is useful when you have pooled samples in a library by using one or two PCRs to add sample identifiers to the sequences. In our lab, we use redundant Tags to do so (the sample can be identified by its forward or reverse tag, not by a combination of Fwd and Rev information -ala NEXTERA), and RunQC takes advantage of that to look for possible crosscontaminations in your reads.
 
-So, let's start with the QC control of your metabarcoding run
+So, let's start with the QC control of your metabarcoding run. 
 
-Your run aimed to sequence (total number of samples). You used (number of libraries) level one indices combined with (number of Tags) level two indices to identify those samples. We will analyize each level-one index and all the level two indices included in it.
+RunQC needs to point at the folder where the banzai output is stored, and then point at three files we will need, the sample map, the otu map and the logfile from banzai
+```{r}
+banzai.output="/Users/rgallego/banzai_out_20170707_1627"
+run.output=paste0(banzai.output,"/RunQC_output")
+dir.create(run.output)
+DUP_mapfile <- paste0(banzai.output,"/all_lib/derep.map")
+sample_mapfile <- paste0(banzai.output, "/sample_trans.tmp")
+DUP_to_OTU_mapfile <- paste0(banzai.output, "/all_lib/OTUs_swarm/dups_to_otus.csv")
+logfile<- paste0(banzai.output,"/logfile.txt")
+```
+
+Now we'll use this to load the files into R
+```{r}
+DUP_map <- read.table(DUP_mapfile, stringsAsFactors = FALSE, header = FALSE)
+DUP_map[,4:6]<-with (DUP_map, colsplit(V2,";",c("library","Fwd","Rev")))
+DUP_map[,5:6]<-apply(DUP_map[,5:6], 2, gsubseq)
+
+DUP_map_no_singletons<-subset(DUP_map, V3>1)
+
+sample_map <- read.table(sample_mapfile, stringsAsFactors = FALSE, header = FALSE)
+sample_map[,4:6]<-with (sample_map, colsplit(V1,";",c("library","Fwd","Rev")))
+sample_map[,5:6]<-apply(sample_map[,5:6], 2, gsubseq)
+
+positiveCtrl<-sample_map[grep(pattern = "ostrich",ignore.case = T,x = sample_map$V3),"V1"]
+negativeCtrl<-sample_map[grep(pattern = "NTC",ignore.case = T,x = sample_map$V3),"V1"]
+```
+
+You aimed to sequence `r nrow(sample_map) ` samples, including `r length(positiveCtrl)`  positive controls - or known-template samples- and `r length(negativeCtrl)` negative controls. You used `r nlevels(as.factor(sample_map$library))` level one indices combined with up to `r max(sapply(levels(as.factor(sample_map[,"library"])),FUN = ntags))` level two indices to identify those samples. We will analyize each level-one index and all the level two indices included in it.
+
+The sequencing run detected `r nlevels(as.factor(DUP_map[,"V1"]))` unique sequences, with `r paste0(round(100*nlevels(as.factor(DUP_map_no_singletons[,"V1"]))/nlevels(as.factor(DUP_map[,"V1"])),2)," %")` of them ocurring more than once. 
+
+Now we will run a function that analyses each library, and retrieves for us the data we want: Did we recover all data we expected, did Forward and Reverse tags combined in the way we expected, and how often did unexpected combinations appear. 
+```{r, echo=FALSE, include=FALSE}
+a<-levels(as.factor(DUP_map_no_singletons$library))
+test<-lapply(a,per_lib,otu=DUP_map_no_singletons, map=sample_map )
+names(test)<-a
+tett2<-unlist(test, recursive = F);rm(test)
+names(tett2)
+
+```
+
+
 A first plot shows the recovery of the forward and reverse Tags: Banzai only analyzes those reads in which F and R Tags belonged to the same tag, while here we are looking behind the scenes. Forward Tags are in the Y axis and Reverse Tags in the X axis, and tags have been ordered so the expected combinations lie in the diagonal of the plot. Axis labels have been color-coded, with green representing Tags expected and recovered; pink for expected but not recovered (not necessarily a problem: it could be your negative control) and red for unexpected Tags.
+```{r echo=F}
+b<-grep(pattern = ".plot", x = names(tett2),fixed = T)
+heatmaps<-marrangeGrob(tett2[b],ncol = 1, nrow = 1,top=F)
+heatmaps
+```
+
 
 Another way of looking at this is by showing - for each Tag - how many reads had the correct tag at the other end of the amplicon.
+```{r, echo=FALSE, fig.width=12,fig.height=9}
+b<-grep(pattern = ".data_to_plot", x = names(tett2))
+c<-gsub(pattern = ".data_to_plot",replacement = "",x = names(tett2))
+m<-NULL
+for (i in b){
+  tett2[[i]]$lib=c[i]
+  m<-rbind(m,do.call(cbind.data.frame,tett2[[i]]))
+}
 
-Looking at all libraries at once, we have generated two .csv files with all missing (head missing ll) and all unexpected barcodes (head allunexpected). With the missing samples, you can see the patterns across libraries on this table
+Tags_16S<-data.frame(Fwd=levels(as.factor(sample_map[,"Fwd"])),
+                     Tag=1:nlevels(as.factor(sample_map[,"Fwd"])))
+Tags_16S[,"Rev"]<-sample_map[,"Rev"][match(Tags_16S[,"Fwd"], sample_map[,"Fwd"])]
+m$Tag<-Tags_16S[,"Tag"][match(m$Fwd,Tags_16S$Fwd)]
+m[,"Tag_R"]<-Tags_16S[,"Tag"][match(m$Rev,Tags_16S$Rev)]#Do the same for rev tag - 700 missed
+m[,"Tag"][is.na(m[,"Tag"])]<-m[,"Tag_R"][is.na(m[,"Tag"])]# replace NAs with the rev
+m<-m[!is.na(m[,"Tag"]),]
+
+m$Paired<-"NA"
+for (i in 1:nrow(m)){
+  m$Paired[i]<-compare_strings(m$Fwd[i],m$Rev[i], m$Paired[i])
+ }
+m$Paired<-as.factor(m$Paired)
+
+ggplot(data = m, aes(x= Paired, y=N_reads, fill=Paired))+geom_col()+facet_grid(lib~Tag, scales = "fixed")+
+   theme(axis.text.x = element_blank(),
+         legend.title = element_blank(),
+        axis.ticks.x = element_blank())+labs(y="# Reads")
+```
+
+Looking at all libraries at once, we have generated two .csv files with all missing (head missing all) and all unexpected barcodes (head allunexpected). With the missing samples, you can see the patterns across libraries on this table
 (insert table)
 
 What aboutthe unexpected barcode combinations? We can visualize the patterns across libraries, showing the number of unexpected Reverse Tags per Forward Tag, and viceversa. If there was a consistent problem with the oligos used for secondary indexing, You can discover looking for patterns across this graphs. It something went wrong during the preparation of a particular libary those patterns will arise along the columns in this graph.
 
 The underlying issue could be a Tag-jumping event, possibly during library amplification, in which unused secondary tags have been carried over and start binding with properly tagged amplicons, and then producing a number of randonmly tagged amplicons. We can have two looks at this problem. One is by having, on each library, an known amplicon that would not occurr on the rest of the samples. Then we can plot its abundance across different tag combinations.
 
-You labelled your positive control as Ostrich*(1,2,3)
+You labelled your positive control as Ostrich*(1,2,3). The 
 
+In order to further analyze your data, we'll create a DUP and a OTU table, and we'll show the similarities between samples.
 
+First the DUP table. A common practise is to get rid of sequences that only appear once, as they are likely to be an artifact. So we will use the object that does not include singletons. We'll put here a visualization of the number of reads and of unique DUPs per sample. 
 
-Your sequencing run returned (total number of reads). (perdentage of paired) % of Forward and Reverse reads could be correctly merged using PEAR  consisted on (introduce number of samples)
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+```{r}
+DUP_table_no_singletons<-rename_samples(DUP_map_no_singletons,sample_map)
+DUP_table_no_singletons$V2<-gsub("sample=","",DUP_table_no_singletons$V2, fixed=T)
+colnames(DUP_table_no_singletons)[1:3]=c("DUP","Sample","nReads")
+#Transform the dataset to include ab and diversity on the same plot
+temp_df<-as.data.frame(summarise(group_by(DUP_table_no_singletons,Sample), count=length(nReads), sum=sum(nReads)))
+ggplot(temp_df, aes(x=Sample, y=sum, fill=count))+ geom_col()+scale_fill_distiller(type="seq",palette = 2, direction = 1)+labs(x="Sample", y="# Reads", fill="# DUPs")
+colnames(DUP_table_no_singletons)[1:3]=c("DUP","Sample","nReads")
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
+write.csv(file = paste0(run.output,"/DUP_Table.csv"),DUP_table_no_singletons[,1:3])
 ```
 
-## Including Plots
+You can access all files in `r run.output`. Now Let's do a similar thing with the OTU table.
+```{r}
+DUP_to_OTU<-read.csv(DUP_to_OTU_mapfile)
+#TODO: make banzai or Swarm to name items on col 2 as OTU_ rather than DUP_
+DUP.to.OTU <- function(DUP_table, map_DUP_to_OTU){
+	DUP_table[,"OTU"] <- map_DUP_to_OTU[,2][match(DUP_table[,1], map_DUP_to_OTU[,1])]
+	temp<-as.data.frame(summarise(group_by(DUP_table,OTU,Sample), sum(nReads)))
+	temp[,1]<-gsub("DUP_","OTU_",temp[,1],fixed=T)
+	colnames(temp)=c("OTU","Sample","nReads")
+	return(temp)
+}
+OTU_table=DUP.to.OTU(DUP_table_no_singletons,DUP_to_OTU)
+temp_df<-as.data.frame(summarise(group_by(OTU_table,Sample), count=length(nReads), sum=sum(nReads)))
 
-You can also embed plots, for example:
+ggplot(temp_df, aes(x=Sample, y=sum, fill=count))+ geom_col()+scale_fill_distiller(type="seq",palette = 2, direction = 1)+labs(x="Sample", y="# Reads", fill="# OTUs")
+write.csv(file = paste0(run.output,"/OTU_Table.csv"),OTU_table)
+```
+A second analysis is to look at the similiraty between samples: we are expecting that PCR replicates (denoted .1, .2 and .3) from the same sample are really similar to each other. Let's start with the DUP table
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+```{r}
+Samples<-as.data.frame(levels(as.factor(DUP_table_no_singletons$Sample)))
+colnames(Samples)="Samples"
+Samples$Environmental_Samples<-gsub("[.][0-9]","",Samples$Samples, perl = T)
+Samples$Daily_replicates<-gsub("[A-Z]$","",Samples$Environmental_Samples, perl=T)
+Samples$Locality=gsub("[0-9]","",Samples$Daily_replicates, perl = T)
+
+DUP_matrix<-dcast(DUP_table_no_singletons[!is.na(DUP_table_no_singletons$Sample),1:3], Sample~DUP)
+DUP_matrix[is.na(DUP_matrix)]<-0
+row.names(DUP_matrix)<-DUP_matrix[,1]
+DUP_matrix<-DUP_matrix[,-1]
+DUP_bc<-vegdist(DUP_matrix)
+heatmap(as.matrix(DUP_bc))
+
+
+mds.dist.DUPs.bc<-monoMDS(DUP_bc)
+site.env2<-as.data.frame(mds.dist.DUPs.bc$points)
+mds.plot1=ggplot(data=site.env2)+theme_bw()+theme(axis.ticks.y = element_blank(),axis.ticks.x = element_blank(),
+                                                  axis.title.x=element_blank(), axis.title.y=element_blank(),
+                                                  axis.text.x = element_blank(),axis.text.y = element_blank(),
+                                                  legend.title=element_blank())+
+  geom_point(aes(x=MDS1,y=MDS2,color=Samples$Environmental_Samples,shape =Samples$Locality),size=5)
+mds.plot1  
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+And Now for OTUs
+```{r}
+OTU_matrix<-dcast(OTU_table[!is.na(OTU_table$Sample),1:3], Sample~OTU)
+OTU_matrix[is.na(OTU_matrix)]<-0
+row.names(OTU_matrix)<-OTU_matrix[,1]
+OTU_matrix<-OTU_matrix[,-1]
+OTU_bc<-vegdist(OTU_matrix)
+heatmap(as.matrix(OTU_bc))
+
+
+mds.dist.OTU.bc<-monoMDS(OTU_bc)
+site.env2<-as.data.frame(mds.dist.OTU.bc$points)
+mds.plot1=ggplot(data=site.env2)+theme_bw()+theme(axis.ticks.y = element_blank(),axis.ticks.x = element_blank(),
+                                                  axis.title.x=element_blank(), axis.title.y=element_blank(),
+                                                  axis.text.x = element_blank(),axis.text.y = element_blank(),
+                                                  legend.title=element_blank())+
+  geom_point(aes(x=MDS1,y=MDS2,color=Samples$Environmental_Samples,shape =Samples$Locality),size=5)
+mds.plot1  
+```

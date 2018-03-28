@@ -1,7 +1,7 @@
 #This is an R script, that given a folder with the results of banzai, 
 #will create some plots and dfs with the missing and unexpected sampe barcodes found
 #As it is now, you have to input here the directory
-banzai.output="/Users/moncho/Documents/troubleshooting_eDNA/Aquaculture_diversity/output/banzai_out_20170317_1709"#Your directory here
+banzai.output="/Users/rgallego/Google_Drive/Kelly_Lab/Projects/TideEffectHoodCanal_Gallego/Data/16S/nano_run/banzai_out_20170608_1257"#Your directory here
 
 #And we need to load some R functions, and libraries
 library(gridExtra)
@@ -11,7 +11,7 @@ library (reshape2)
 library(Biostrings)
 source('./Scripts/remap_banzai_output.r')
 source('./Scripts/string.diff.ex.r')
-#source('./Scripts/per_lib.r')
+source('./Scripts/per_lib.r')
 source('./Scripts/fv.r')
 source('./Scripts/distance_to_known.r')
 source('./Scripts/Mon_rev_com.r')
@@ -34,6 +34,20 @@ sample_mapfile <- paste0(banzai.output, "/sample_trans.tmp")
 # read sample map
 sample_map <- read.table(sample_mapfile, stringsAsFactors = FALSE, header = FALSE)
 
+#Function to see the maximum number of tags per library
+ntags<-function(lib){nlevels(as.factor(subset(x = sample_map,subset = library==lib)[,"Fwd"]))}
+
+max(sapply(levels(as.factor(sample_map[,"library"])),FUN = ntags))
+
+#look for samples that will have ostrich in them
+positiveCtrl<-sample_map[grep(pattern = "ostrich",ignore.case = T,x = sample_map$V3),"V1"]
+length(positiveCtrl)
+negativeCtrl<-sample_map[grep(pattern = "NTC",ignore.case = T,x = sample_map$V3),"V1"]
+positveCtrl_DUPs<-otu_map[which(otu_map$V2 %in% positiveCtrl),]
+ttl_pstve=sum(positveCtrl_DUPs$V3)
+positveCtrl_DUPs$prop=
+
+
 sample_map[,4:6]<-with (sample_map, colsplit(V1,";",c("library","Fwd","Rev")))
 sample_map[,5:6]<-apply(sample_map[,5:6], 2, gsubseq)
 #Now run all functions
@@ -50,9 +64,8 @@ otu_map_no_singletons$library<-as.factor(otu_map_no_singletons$library)
   names(tett2)
   #Plots are .plot, missing and unexpectedF and R
   #Plots: showd them on screen and make a pdf
-    b<-grep(pattern = ".plot", x = names(tett2))
-    library("gridExtra")
-    heatmaps<-marrangeGrob(tett2[b],ncol = 1, nrow = 2)
+    b<-grep(pattern = ".plot", x = names(tett2),fixed = T)
+    heatmaps<-marrangeGrob(tett2[b],ncol = 2, nrow = 2)
     heatmaps
    t<-multiplot(tett2[b], cols=1)
    
@@ -71,6 +84,7 @@ otu_map_no_singletons$library<-as.factor(otu_map_no_singletons$library)
     c1$lib_fwd<-with(c1,interaction(library,Fwd, drop = T))
     c1$sample<-sample_map[,3][match(c1$lib_fwd,sample_map$lib_fwd)]
     c1
+    
     write.csv(c1, file=paste0(banzai.output,"/all_missing_samples.csv"))
   #Unexpected samples - We analize each set of unexpected barcodes, on both the Fwd and rev end of the amplicon
     d<-grep(pattern = ".unexpectedF", x= names(tett2))

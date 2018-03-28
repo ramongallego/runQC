@@ -41,9 +41,11 @@ fv<- function (direction, lib, df, map){
   }
   
   to_plot<-rbind(df,empty_to_add)#Need to do this outside of the function
-  to_plot2<-aggregate(to_plot$V3, by=list(to_plot[,direction], to_plot[,reverse_direction]),sum)
+  to_plot2<-aggregate(to_plot$V3, by=list(to_plot[,direction], to_plot[,reverse_direction]),function(x) c( N_reads = sum(x), N_DUPs= length(x) ) )
+  to_plot2[,4]=to_plot2[,3][,2]#TODO: This is ugly as hell
+  to_plot2[,3]=to_plot2[,3][,1]#do we want a plot with number of unique sequences per sample?
   
-  colnames(to_plot2)<-c(direction,reverse_direction,"V3")
+  colnames(to_plot2)<-c(direction,reverse_direction,"N_reads","N_DUPs")
   ####ANY UNEXPECTED  FOUND?
   print(paste0("Are any unexpected ", direction," barcodes present?"));print( sum(!all_present_no_singletonsF %in% all_mappedF))  
   unexpected_Fwd<-all_present_no_singletonsF[!all_present_no_singletonsF %in% all_mappedF]
@@ -76,5 +78,5 @@ fv<- function (direction, lib, df, map){
               order_list_rc=rc_new_list_all_fwds,
               color_list=list_of_text_color_F,
               color_list_rc=rc_list_of_text_color_F,
-              data_to_plot=to_plot2))
+              data_to_plot=to_plot2              ))
 }
